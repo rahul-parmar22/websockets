@@ -9,11 +9,11 @@ function Register() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log(form)
+    //console.log(form)
     try {
       const res = await axios.post("http://localhost:5000/api/v1/user/register", form);
       alert("Registration successful. Now login.");
-      console.log(res);
+      //console.log(res);
       
       navigate("/login");
     } catch (err) {

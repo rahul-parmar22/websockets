@@ -19,7 +19,7 @@ export const getMessages = async(req , res)=>{
             success:true ,
             messages:messages
         })
-console.log(messages)
+
 
     } catch (error) {
         res.status(500).json({

@@ -13,12 +13,21 @@ function Home() {
   const [activeUser, setActiveUser] = useState(null); // jo ahi null nahi hoy ane [] pass karsho to aa bhale empty hoy chhata array ek truthy valu chhe to empty array hova chhata je true ni condition hashe te chalshe..mate ahi jo active user nahi hoy tem chhata active userno je interface and style dekahdvani hoy te dekhashe
   const [sender, setSender] = useState(localStorage.getItem("userId"));
  const [isTyping,setIsTyping] = useState(false); 
+ const [onlineUsers, setOnlineUsers] = useState([])
 
 
   // const messageEndRef = useRef(null);  // jo scroll intoveiw valu use karo to ena mate
   const containerRef = useRef(null);  // aa whatsapp jevu lage ke message already niche j hoy ...
   // localStorage.setItem("user", JSON.stringify(res.data.users[0]))  //localstorage ma hamesha string j store thay ..json data store thay..pan jo backend thi koi object aavto  hoy to tene store akrvo hoy local storage ma to tame direct tene setItem thi nahi store kari shako...mate pela tamare tene tene pahale json.stringify thi te object ne string/json ma convert karo ane pachhi te store thay..ahi user object ne string ma convert karine store karay
   //JSON.parse(localStorage.getItem("user"))  // upar je local ma string ma object chhe tene have destrcuture karine use no kari shako mate pela te string/json ne pachhu object ma convert karvu pade pachhi teno use thay mate ..json.parse() ... ahi user key  chhe ane teni value ek evo object chhe je string ma convert chhe to tene pachho object ma convert karvo chhe em
+
+
+  useEffect(() => {
+    socket.on("getOnlineUsers", (data) => {
+        setOnlineUsers(data); // Ye saari online User IDs ka array hoga
+    });
+    return () => socket.off("getOnlineUsers");
+}, []);
 
 
   const API = "http://localhost:5000/api/v1";
@@ -41,9 +50,10 @@ function Home() {
 
 useEffect(() => {
   fetchUsers();
-
-    socket.emit("register", sender);
-}, []);
+if(!sender) return; // jo initial sender haji localstorage ma set no hoy to backend ma sender undefined jay to error cause kare
+ 
+socket.emit("register", sender.toString()); //khas dhyan rakhvu ke koi type mismatch no thay ..ahi safety mate string() kari nakhvu
+}, [sender]);
 
   //fetch messages
 
@@ -61,6 +71,7 @@ useEffect(() => {
 
   useEffect(() => {
     fetchMessages();
+
   }, [activeUser]);
 
 useEffect(()=>{
@@ -134,34 +145,106 @@ return()=>{
   };
 
   //instant messages set when backend socket send new messages
-  useEffect(() => {
-    socket.on("receive_message", (newMsg) => setMessages((pre)=>[...pre, newMsg]));
+//   useEffect(() => { //aama haji ek error to chhe j ke ..haji pan backend thi  user jene message mokle tena badha open chat ma mesage to bakcend send kare j chhe io.receiver  thi... pan aaya frontend thi only condition lagavine check karvi chhie..to backend thi j only aa ek j ne jay evu solution find karo..
+//     socket.on("receive_message", (newMsg) => {
+//     // Condition: Sirf tabhi messages mein add karo agar...
+//     // 1. Message bhenjne wala (newMsg.sender) wahi hai jo hamara activeUser hai.
+//     // 2. YA phir hum khud sender hain (self-message case, halaki aapne isse backend se handle kiya hai).
 
-    return () => {  //return ma ek fun j hovo joi.. only "return abcd" karo to no chale
-      socket.off("receive_message");
-    };
-  }, []);  //ahi [] chhe means evu nathi ke only ek var j receive thashe message em nathi...jya shudhi compnent chhe mount chhe tya sudhi aa chalshe...etale have game etala message ave badha chalshe em
+//     setActiveUser((currentActiveUser) => {
+//       // Agar wahi chat open hai jiska message aaya hai
+//       if (currentActiveUser && newMsg.sender === currentActiveUser._id) {
+//         setMessages((prev) => [...prev, newMsg]);
+
+// // 2. Agar ye message current chat wale se hi aaya hai, toh seen mark karo
+// if (activeUser && newMsg.sender === activeUser._id) {
+//       socket.emit("mark_as_seen", {
+//         sender: activeUser._id // Jo bhej raha tha uski ID
+//       });
+//     }
+//       } else if (newMsg.sender === sender) {
+//         // Agar message humne hi dusre device se bheja ho (optional handling)
+//         setMessages((prev) => [...prev, newMsg]);
+//       } else {
+//         // Yahan aap "New message from other user" ki notification dikha sakte hain
+//         console.log("Notification: Message received from", newMsg.sender);
+//             //ahiya upar notification pan rakhi shako e new message aavyo
+//       }
+//       return currentActiveUser;
+//     });
+//   });
+//     return () => {  //return ma ek fun j hovo joi.. only "return abcd" karo to no chale
+//       socket.off("receive_message");
+//     };
+//   }, [sender]);  
+
+
+useEffect(() => {
+  const handleReceive = (newMsg) => {
+    // Functional update ka use karein taaki latest state mile
+    setActiveUser((currentActive) => {
+ //ahi khas logic chhe ke aa setActiveUser shu kam use karie chhie jyare activeUser to upar state male chhe?? ane aane set karvi chhi kem?? 
+ //ANS: initially website load samye activeUser null hoy to e samye aa [] first time chale etale activeUser null thay ane jyare change thay ane jo aa useeffect ni dpendency ma nakho to jo user 50 var user ne badalya kare to 50 var aa useeffect ma je connection chhe e chalu bandh thay ane performance kharab thay
+ //mate aa setActiveUser eetale chhe ke jyare active user jo change thay ane koi message aave pan chhe server thi to aa current ma je user active hashe tene aapashe etale kahabr padi jay ke current ma kayo chhe e janva mate ane perfomance mate aa setActiveUser ho upyoug karel chhe ..nahi ke set karva teni value....
+
+
+ //most imp logic:: //
+ // ahi niche aapane filter lagavela chhe karan ke jyare userA login kare etale room ma joday jene aapane userId name aapel chhe to pachhi evi rite bijo userB joday to e teni userId ni room ma joday  .....
+ //have jyare userA messag mokle io.to(userIdB) tema to teni pase have andar ghana badha chat hoy ..ane socket nu kam chhe ke instantly message batavvo userB me karan ke teni room ma mokalel chhe to pachhi game e chat open hoy aapane aa karvi setMessages((prev) => [...prev, newMsg]); etale currnetly je pan chat open chhe tena message ma aa newmsg add thai jay ane aapanne lage ke badha user ne message jay chhe 
+ //mate io.to() nu kam chhe e room ma message ne mokalvanu have tene frontend ma tamare kya show karvo ke nahi show karvo ke notification batavvu e badhu kam frontend nu chhe..mate ahi niche aapane logic and condition lagavine user pramane dekhadie chhie...
+ //io.to(userId) means aakhi aapani open website ek room chhe ... je user chhe andar na e badha ek ek room nathi 
+
+      // Check 1: Kya ye message usi ki chat ka hai jo abhi OPEN hai?
+      if (currentActive && (newMsg.sender === currentActive._id || newMsg.receiver === currentActive._id)) {
+        
+        setMessages((prev) => [...prev, newMsg]);
+
+        // Check 2: Agar message samne wale se aaya hai (hum receiver hain), toh SEEN bhej do
+        if (newMsg.sender === currentActive._id) {
+          socket.emit("mark_as_seen", { sender: currentActive._id });
+        }
+      } else {
+        // Agar chat open nahi hai, toh yahan notification logic handle karein
+        console.log("New message from someone else:", newMsg.sender);
+      }
+      
+      return currentActive; // State return karna mat bhoolna
+    });
+  };
+
+  socket.on("receive_message", handleReceive);
+
+  return () => {
+    socket.off("receive_message", handleReceive);
+  };
+}, [sender]); // Sirf sender change hone par refresh karein
+
 
   //✅ (A) status update handle karo
 useEffect(()=>{
-  socket.on("message_status_update", (updatedMsg)=>{
-    setMessages((prev)=> prev.map((msg)=> msg._id === updatedMsg._id ? updatedMsg : msg));
-  });
+  socket.on("message_status_update", (updatedMsg)=>{                //niche ek minor error hti me pela only  {...msg, ...updatedMsg} karyu htu pan jyare koi eva user ne message kare je login nathi to tene single tickno message dekhay but jevo e user login kare etale te te message ni jagyae e "invalid Date" aavu aavi jay ....because e message ma tya createdAt field hoy j nahi to e shu kam no hoy?? karan niche chhe
+    setMessages((prev)=> prev.map((msg)=> msg._id === updatedMsg._id ? {...msg, ...updatedMsg} : msg));//jyare message moklo etale e db ma store thay but jyare user login thay etale status update chale ane tema backend na logic ma chhe ema findId and update chhe to e update kare document ne ane tema new:true hoy etale e only tyathi je vastu mokle etaly j hoy chhe...ane te only backend thi status j mokle chhe to teni pase tyare createdAt ke message shu chhe e nahi hoy mate tya date nahi hoy etale e invalid batave ane message pan no batave pan jyare user pachhi bija active use pase jai ane pachhi pachho aave to tyare batave karan ke tyare data api thi aavto hoy ...instant je .emit thi change thay ena karne error aave
+  });                                                                // mate aapane aa karvi chhie ek already je message chhe teni badhi property to raheva j do jethi message , creatdAt badhu male ane aa je only new aavi tene add kari dyo ..and already hoy to tene change kari dyo em...
  return()=> socket.off("message_status_update");
-},[]);
-
+},[]);      //ahi [] chhe means evu nathi ke only ek var j status update thashe messageno em nathi...jya shudhi compnent chhe mount chhe tya sudhi aa chalshe...etale have game etala message update thay e component chhe tya shudhi thaya rakhe.....
+           //useEffect ka empty array [] matlab hai ki socket listener sirf ek baar register hoga (mount par)...Lekin kyunki wo listener socket.on hai, wo background mein hamesha chalta rahega jab tak component unmount nahi hota......
+     
 //✅ (B) seen update handle karo
 useEffect(() => {
-socket.on("message_seen", ({ by }) => {
-  setMessages((prev) =>
-    prev.map((msg) =>
-      msg.sender === by ? { ...msg, status: "seen" } : msg
-    )
-  );
-});
+  socket.on("message_seen", ({ by }) => {
+    setMessages((prev) =>
+      prev.map((msg) =>
+        // Agar message maine (sender) bheja tha aur 'by' (receiver) ne ab dekh liya
+        // Yahan 'by' wo user hai jisne message padha hai
+        msg.receiver === by && msg.status !== "seen" 
+          ? { ...msg, status: "seen" } 
+          : msg
+      )
+    );
+  });
 
   return () => socket.off("message_seen");
-}, []);
+}, []); // Isme dependencies ki zaroorat nahi kyunki prev state use ho rahi hai
 
 //✅ (C) Chat open hote hi seen emit karo..👉 Ye sabse important hai 🔥
 
@@ -175,7 +258,7 @@ useEffect(() => {
     // Optimistically update UI immediately
     setMessages((prev) =>
       prev.map((msg) =>
-        msg.sender === activeUser._id ? { ...msg, status: "seen" } : msg
+        msg.sender === activeUser._id ? { ...msg, status: "seen" } : msg  //Ye bahut smart move hai! Isse user ko "lagta" hai ki app super fast hai (Optimistic UI update), bina server ke response ka wait kiye.
       )
     );
   }
@@ -197,22 +280,39 @@ useEffect(() => {
          
          <div className="">logged in As: {localStorage.getItem("username")}</div>
          
-          {users.map((item, index) => {
-            return (
-              <button
-                key={index}
-                onClick={() => {
-                  setActiveUser(item);
-                  setMessage("");
-                }}
-                disabled={activeUser?.username === item.username}
-                className={` ${activeUser?.username === item.username ? "bg-gray-300" : ""}   cursor-pointer p-1 w-full shadow text-lg pl-5 lg:pl-20`}
-              >
-                {" "}
-                {item.username}
-              </button>
-            );
-          })}
+{users.map((item, index) => {
+  // Check if user is in onlineUsers array
+  const isOnline = onlineUsers.includes(item._id.toString());
+  
+  return (
+    <button
+      key={index}
+      onClick={() => {
+        setActiveUser(item);
+        setMessage("");
+      }}
+      className={`relative flex items-center gap-3 p-2 w-full shadow text-lg pl-5 lg:pl-20 
+        ${activeUser?._id === item._id ? "bg-gray-300" : ""}`}
+    >
+      {/* Green Dot with Glow */}
+      <div className="relative">
+        <div className="h-10 w-10 bg-gray-400 rounded-full flex items-center justify-center text-white text-sm">
+          {item.username[0].toUpperCase()}
+        </div>
+        {isOnline && (
+          <span className="absolute bottom-0 right-0 block h-3 w-3 rounded-full bg-green-500 border-2 border-white shadow-[0_0_8px_rgba(34,197,94,0.7)]"></span>
+        )}
+      </div>
+
+      <div className="flex flex-col items-start">
+        <span>{item.username}</span>
+        <span className={`text-[10px] ${isOnline ? "text-green-600 font-bold" : "text-gray-500"}`}>
+          {isOnline ? "online" : "offline"}
+        </span>
+      </div>
+    </button>
+  );
+})}
         </div>
 
         {activeUser ? (
@@ -225,7 +325,14 @@ useEffect(() => {
 
                   <div className="font-medium text-lg">
                     {activeUser?.username}{" "}
-                    
+                    <div className="font-medium text-lg flex items-center gap-2">
+    {activeUser?.username}
+    {onlineUsers.includes(activeUser?._id.toString()) && (
+        <span className="text-xs text-green-500 bg-green-50 px-2 py-0.5 rounded-full border border-green-200">
+            Active Now
+        </span>
+    )}
+</div>
                   </div>
 <div className="h-5">
 

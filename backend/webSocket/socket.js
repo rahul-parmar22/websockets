@@ -31,23 +31,53 @@
 //Last ma chhelle room , group, badhu explanation chhe in detaield ma samji levu::
 import Message from "../model/messageModel.js"
 
+
+
+const onlineUsers = new Map();
+
 export const webSocketHandler = (io)=>{
 
 
 io.on("connection", async(socket)=>{
 
-const onlineUsers = new Map();
+ // ✅ Register user
+    socket.on("register", async(userId) => {
+      const id = userId.toString(); // always string
+      socket.userId = id;
+      socket.join(id); // logical room for the user
+      onlineUsers.set(id, socket.id);
+      console.log("User registered:", id);
 
-socket.on("register", (userId) => {
-    socket.userId = userId;
-    socket.join(userId);
-    onlineUsers.set(userId, socket.id);
-});
+      // 📢 Sabko updated online list bhejo
+    io.emit("getOnlineUsers", Array.from(onlineUsers.keys()));
+console.log("User registered:", id);
 
-socket.on("disconnect", () => {
-    onlineUsers.delete(socket.userId);
-});
 
+
+// 🔥 JADU YAHAN HAI:
+    // 1. Database mein is user ke liye aaye huye saare 'sent' messages ko 'delivered' kar do
+    const undeliveredMessages = await Message.find({ receiver: id, status: "sent" });
+    
+    if (undeliveredMessages.length > 0) {
+        await Message.updateMany(
+            { receiver: id, status: "sent" },
+            { status: "delivered" }
+        );
+
+        // 2. Har ek sender ko notify karo ki unka message deliver ho gaya hai
+        undeliveredMessages.forEach((msg) => {
+            const senderSocketId = onlineUsers.get(msg.sender.toString());
+            if (senderSocketId) {
+                io.to(senderSocketId).emit("message_status_update", {
+                    _id: msg._id,
+                    status: "delivered"
+                });
+            }
+        });
+    }
+
+
+    });
 
   // socket.on("send_message", async({sender , receiver, message})=>{
           
@@ -68,65 +98,134 @@ socket.on("disconnect", () => {
   //     io.to(sender).emit("message_status_update", { ...newMsg._doc, status:"delivered"})
   //   })
 
-  socket.on("send_message", async({ receiver, message })=>{
-    const sender = socket.userId; // sender from socket
+//   socket.on("send_message", async({ receiver, message })=>{
+//     const sender = socket.userId; // sender from socket
+//         if (!sender) {
+//         console.error("Sender undefined. Did you forget register?");
+//         return;
+//     }
+
+//     // 1️⃣ Save message
+//     const newMsg = await Message.create({
+//         sender,
+//         receiver,
+//         message,
+//         status:"sent"
+//     });
+
+//     // 2️⃣Sender sees instantly
+//     socket.emit("receive_message", newMsg);
+
+//     // 3️⃣ Send only to receiver's socket
+//       const receiverSocketId = onlineUsers.get(receiver?.toString());
+
+
+//     if (receiverSocketId) {
+//         io.to(receiverSocketId).emit("receive_message", newMsg);
+
+//         // 4️⃣ Delivered mark karo
+//         const updated = await Message.findByIdAndUpdate(
+//             newMsg._id,
+//             { status: "delivered" },
+//             { returnDocument: "after" }
+//         );
+
+//         // 5️⃣ Sender ko update bhejo
+//         socket.emit("message_status_update", updated);
+//     }
+// });
+
+
+socket.on("send_message", async ({ receiver, message }) => {
+    const sender = socket.userId;
+    if (!sender) {
+        console.error("Sender undefined. Did you forget register?");
+        return;
+    }
 
     // 1️⃣ Save message
     const newMsg = await Message.create({
         sender,
         receiver,
         message,
-        status:"sent"
+        status: "sent"
     });
 
-    // 2️⃣ Sender ko turant dikhao
-    socket.emit("receive_message", newMsg);
+    // 2️⃣ Sender ko confirm karo (taaki multiple tabs sync rahein)
+    // socket.emit ki jagah io.to(sender) use karna better hai
+    io.to(sender.toString()).emit("receive_message", newMsg);
 
+    // 3️⃣ Target: Only Receiver ke room mein message bhejo 🔥
+    // Aapne register mein socket.join(id) kiya hua hai, isliye direct room use karo
+    io.to(receiver.toString()).emit("receive_message", newMsg);
 
-    io.to(receiver).emit("receive_message", newMsg);
+    // 4️⃣ Delivered status logic
+    const receiverSocketId = onlineUsers.get(receiver?.toString());
 
-
-    // 3️⃣ Check if receiver online
-    const receiverSockets = io.sockets.adapter.rooms.get(receiver); // room me koi hai ya nahi
-    if(receiverSockets && receiverSockets.size > 0){
-        // 4️⃣ Receiver ko bhejo
-        io.to(receiver).emit("receive_message", newMsg);
-
-        // 5️⃣ Delivered mark karo
+    if (receiverSocketId) {
+        // DB update
         const updated = await Message.findByIdAndUpdate(
             newMsg._id,
             { status: "delivered" },
-            { new: true }
-        );
+            {returnDocument: 'after' } // returnDocument: "after" ka modern shortcut
+        );  //ahi jyare aa message first  time jay to e only aa status j aape cheh ane ek small error aave chhe to e aano jya use thay chhe frontend ma tya in detailed ma chhe show
 
-        // 6️⃣ Sender ko update bhejo
-        socket.emit("message_status_update", updated);
+        // 5️⃣ Sender ko status update bhejo (Blue tick se pehle wala double tick)
+        io.to(sender.toString()).emit("message_status_update", updated);  //ahi updated ma only 
     }
 });
 
 
 
-
-socket.on("mark_as_seen", async({sender})=>{
+// ✅ Mark messages as seen
+socket.on("mark_as_seen", async ({ sender }) => {
+  // 1. DB Update
   await Message.updateMany(
-    {sender, receiver:socket.userId, status:{$ne:"seen"}}, 
-    {status:"seen"}
+    { sender, receiver: socket.userId, status: { $ne: "seen" } },
+    { status: "seen" }
   );
-  io.to(sender).emit("message_seen", { by:socket.userId})
-})
 
-
-
-
-socket.on("typing",  ({sender,receiver})=>{
-            io.to(receiver).emit("typing", {sender}); 
+  // 2. Samne wale (jisne message bheja tha) ko batao
+  const targetSocketId = onlineUsers.get(sender?.toString()); // Iska naam simple rakhte hai
+  
+  if (targetSocketId) {
+    // Hum "by" bhej rahe hain (yani jisne message abhi padha hai)
+    io.to(targetSocketId).emit("message_seen", { by: socket.userId });
+  }
 });
 
-socket.on("stop_typing", ({sender, receiver})=>{
-  io.to(receiver).emit("stop_typing", {sender}); 
-});
+ // ✅ Typing indicators
+    socket.on("typing", ({ sender, receiver }) => {
+      const receiverSocketId = onlineUsers.get(receiver?.toString());
+      if (receiverSocketId) io.to(receiverSocketId).emit("typing", { sender });
+    });
 
-socket.on("disconnect", ()=> console.log("user Disconnected:", socket.id))
+    socket.on("stop_typing", ({ sender, receiver }) => {
+      const receiverSocketId = onlineUsers.get(receiver?.toString());
+      if (receiverSocketId) io.to(receiverSocketId).emit("stop_typing", { sender });
+    });
+
+
+// socket.on("typing",  ({sender,receiver})=>{
+//             io.to(receiver).emit("typing", {sender}); 
+// });
+
+// socket.on("stop_typing", ({sender, receiver})=>{
+//   io.to(receiver).emit("stop_typing", {sender}); 
+// });
+
+    // ✅ Disconnect
+    socket.on("disconnect", () => {
+      if (socket.userId) {
+        onlineUsers.delete(socket.userId);
+
+        // 📢 Sabko batao ki list change ho gayi hai
+        io.emit("getOnlineUsers", Array.from(onlineUsers.keys()));
+        
+        
+        console.log("User disconnected:", socket.userId, socket.id);
+      }
+    });
 
 })
 }

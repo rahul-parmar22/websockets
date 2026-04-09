@@ -6,7 +6,7 @@ import bcrypt from "bcrypt"
 const JWT_SECRET = 'your_jwt_secret_key';
 
 export  const register = async (req, res) => {
-    console.log("body is ", req.body)
+    //console.log("body is ", req.body)
   const { username, password } = req.body;
   try {
     const existingUser = await User.findOne({ username });
@@ -21,18 +21,18 @@ export  const register = async (req, res) => {
 };
 
 export const login = async (req, res) => {
-    console.log("body is", req.body)
+   // console.log("body is", req.body)
   const { username, password } = req.body;
-  console.log('Incoming login for:', username); // 👈
+  //console.log('Incoming login for:', username); // 👈
 
   try {
     const user = await User.findOne({ username });
-    console.log('User found:', user); // 👈 
+   // console.log('User found:', user); // 👈 
 
     if (!user) return res.status(400).send('User not found');
 
     const isMatch = await bcrypt.compare(password, user.password);
-    console.log('Password match:', isMatch); // 👈
+   // console.log('Password match:', isMatch); // 👈
 
     if (!isMatch) return res.status(400).send('Invalid credentials');
 
@@ -43,7 +43,7 @@ export const login = async (req, res) => {
   { id: user._id, username: user.username },  // 👈 add username here
   JWT_SECRET
 );
-    console.log('Generated token:', token); // 👈
+    //console.log('Generated token:', token); // 👈
 
     res.json({
       token,
