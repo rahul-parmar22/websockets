@@ -1,4 +1,4 @@
-
+{
 //simple flow of websocket ..how to connect each other.... 
 // export const webSocketHandler = (io)=>{
 //  io.on("connect", (socket)=>{
@@ -26,14 +26,37 @@
 //     socket.on("send_message", (message) => console.log(message));
 //     return () => socket.off("send_message"); // return ma ek fun j hovo joie karane ke jo tame only  "return socket.off("send_message")" karsho to nahi chale ...
 //   }, []);
+}
 
 
 //Last ma chhelle room , group, badhu explanation chhe in detaield ma samji levu::
 import Message from "../model/messageModel.js"
+import User from "../model/userModel.js";
 
 
+    //jo db ma register user status online store karvi ane pachhi e pramane je online chhe tene message show karo vagerema bov time lagi jay ...mateaa instantly decision le without server req,res cycle ...jethi speed ma data online user me mokalvano chhe te mali jay..pan last seen vagere eva mate to db ma store karvu pade ....
+const onlineUsers = new Map();    //✅ Pros: ⚡ Ultra fast (O(1))...Real-time accurate.....No DB calls (performance best).....Socket-based → perfect for chat
+                                  //❌ Cons: Server restart → data lost.....Last seen store nahi hota
+                             //jetala pan variable vager chhe e "RAM" ma store thay hamesha to aa online userni value pan ram ma store thay
+                             
+     // INTERVIEW SCALING QUESTIONS:: map to ram ki limit ke hisab se user handle karega chalo like 5000-20000 online users jab 50,000 , 100000 users aa gye to ??
+     //   ANS: jayre vadhare user hoy tyare aapane vadhare server banaviye like  Server 1  → users A, B  and Server 2  → users C, D     jyare app scale thay to but 👉 Ab: A ko message bhejna hai C ko...Lekin A ka server (Server 1) ko pata hi nahi C online hai ya nahi 😬...👉 Kyuki:onlineUsers (Map) → sirf local server ka data hai......?? 
+     //🔥 Yahan Redis ka role aata hai..🟢 1. Redis as Shared Store ..Instead of:Map()  Tum store karte ho:Redis.set("user:123", "online")....👉 Ab:Server 1 bhi dekh sakta hai..Server 2 bhi dekh sakta hai
+     //                                 🟣 2. Redis as Pub/Sub (MOST IMPORTANT): Redis me ek feature hota hai:👉 Publish / Subscribe system....e websocket jem j hoy chhe ke server 1 ma redis.publish(event1, {}) aane redis.subscribe(event1,{})  to have jem .emit, .on karta hta tem j chhe  
 
-const onlineUsers = new Map();
+    // ⚡ 3. Socket.IO + Redis Adapter  //👉Ye kya karta hai? 👉 Agar tum likho: io.to("user123").emit("message");....👉 To:Automatically sab servers me check karega..Jaha user connected hai waha message pahucha dega
+
+                                 // User → Server → Socket.IO
+                                 //                ↓
+                                 //              Redis
+                                 //                ↓
+                                 //         Other Servers
+
+//ahi aapane map() use karyu tenu bov motu logic chhe...
+// 🧠 Real analogy
+// ❌ Array = library me sab books check karna  //jo 1000 user online hoy ane aapane to only 20 user sathe vat karta hoie to  jo Array hoy e bahda user ne find kare ane bov time jay array.find(u => u.id === "A")....👉 O(n) → 1000 users = 1000 checks....
+
+// ✅ Map = index se direct shelf number mil jana //parantu  map.has("A") 👉 O(1) → direct jump ..aa indexing use kare....js internal engine use kare aa badhu... like ...instagram ma lakho usermathi ek ne kem find karvi evi rite to 
 
 export const webSocketHandler = (io)=>{
 
@@ -48,6 +71,8 @@ io.on("connection", async(socket)=>{
       onlineUsers.set(id, socket.id);
       console.log("User registered:", id);
 
+      const user = await User.findByIdAndUpdate(id, {isOnline:true}); 
+         console.log("user", user)
       // 📢 Sabko updated online list bhejo
     io.emit("getOnlineUsers", Array.from(onlineUsers.keys()));
 console.log("User registered:", id);
@@ -215,15 +240,24 @@ socket.on("mark_as_seen", async ({ sender }) => {
 // });
 
     // ✅ Disconnect
-    socket.on("disconnect", () => {
+    socket.on("disconnect", async() => {
       if (socket.userId) {
+        const userId = socket.userId; 
         onlineUsers.delete(socket.userId);
+
+const updatedUser = await User.findByIdAndUpdate(userId, {isOnline:false, lastSeen: new Date()} , {new:true})
+
 
         // 📢 Sabko batao ki list change ho gayi hai
         io.emit("getOnlineUsers", Array.from(onlineUsers.keys()));
         
         
         console.log("User disconnected:", socket.userId, socket.id);
+
+        io.emit("user_status_update", {
+          userId, lastSeen:updatedUser.lastSeen,
+          isOnline:false
+        })
       }
     });
 
