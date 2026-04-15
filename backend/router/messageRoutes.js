@@ -1,10 +1,13 @@
 import { Router } from "express";
-import { getMessages } from "../controller/messageController.js";
+import { deleteMessage, getMessages } from "../controller/messageController.js";
 
 
 
 const router = Router(); 
 
-router.get("/", getMessages)
+router.get("/all-messages", getMessages);
+router.delete("/:id", deleteMessage)
+
 
 export default router;
+

@@ -27,7 +27,7 @@ const io = new Server(server,{ cors:{
 }}); 
 
 app.use("/api/v1/user", userRoutes);
-app.use("/api/v1/messages", messageRoutes); 
+app.use("/api/v1/message", messageRoutes); 
 
 webSocketHandler(io); 
 

@@ -163,6 +163,7 @@ console.log("User registered:", id);
 
 socket.on("send_message", async ({ receiver, message }) => {
     const sender = socket.userId;
+    console.log("sender", sender); 
     if (!sender) {
         console.error("Sender undefined. Did you forget register?");
         return;
@@ -179,7 +180,7 @@ socket.on("send_message", async ({ receiver, message }) => {
     // 2️⃣ Sender ko confirm karo (taaki multiple tabs sync rahein)
     // socket.emit ki jagah io.to(sender) use karna better hai
     io.to(sender.toString()).emit("receive_message", newMsg);
-
+ console.log(newMsg)
     // 3️⃣ Target: Only Receiver ke room mein message bhejo 🔥
     // Aapne register mein socket.join(id) kiya hua hai, isliye direct room use karo
     io.to(receiver.toString()).emit("receive_message", newMsg);
