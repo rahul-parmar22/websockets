@@ -3,7 +3,6 @@ import Register from "./pages/Register";
 import Login from "./pages/Login";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import Home from "./pages/Home";
-import Animation from "./pages/Animation";
           
 
 
@@ -27,10 +26,7 @@ function App() {
       path:"/login",
       element:<Login/>
     },
-    {
-      path:"/ea",
-      element:<Animation/>
-    }
+
   ]); 
 
   return (
